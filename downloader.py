@@ -63,8 +63,12 @@ async def _do_download(url: str, update: Update) -> None:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             },
         }
-        if os.path.exists(_COOKIES_FILE):
+        cookies_loaded = os.path.exists(_COOKIES_FILE)
+        if cookies_loaded:
             ydl_opts["cookiefile"] = _COOKIES_FILE
+            logger.info("Using cookies file: %s", _COOKIES_FILE)
+        else:
+            logger.warning("cookies.txt not found at %s — trying without auth", _COOKIES_FILE)
 
         def _run_ydl():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -99,14 +103,26 @@ async def _do_download(url: str, update: Update) -> None:
 
         except yt_dlp.utils.DownloadError as exc:
             logger.warning("yt-dlp download error for %s: %s", url, exc)
-            await status_msg.edit_text(
-                f"Video yuklab bo'lmadi.\n\n<code>{exc}</code>",
-                parse_mode="HTML",
-            )
+            err = str(exc).lower()
+            if "login required" in err or "rate-limit" in err or "not available" in err:
+                if not cookies_loaded:
+                    msg = (
+                        "❌ Instagram login talab qiladi.\n\n"
+                        "Bot serverida <code>cookies.txt</code> fayli topilmadi.\n"
+                        "Admin serverga cookies faylini yuklashi kerak."
+                    )
+                else:
+                    msg = (
+                        "❌ Instagram cookies eskirgan yoki bloklanган.\n\n"
+                        "Admin yangi <code>cookies.txt</code> faylini yuklashi kerak."
+                    )
+            else:
+                msg = f"❌ Video yuklab bo'lmadi.\n\n<code>{exc}</code>"
+            await status_msg.edit_text(msg, parse_mode="HTML")
         except Exception as exc:
             logger.error("Unexpected error downloading %s: %s", url, exc)
             await status_msg.edit_text(
-                f"Xatolik yuz berdi.\n\n<code>{type(exc).__name__}: {exc}</code>",
+                f"❌ Xatolik yuz berdi.\n\n<code>{type(exc).__name__}: {exc}</code>",
                 parse_mode="HTML",
             )
 

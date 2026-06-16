@@ -13,7 +13,7 @@ from telegram.ext import (
 )
 
 import db
-from downloader import auto_download
+from downloader import auto_download, _COOKIES_FILE
 
 load_dotenv()
 
@@ -103,6 +103,32 @@ def _build_users_page(page: int) -> tuple[str, InlineKeyboardMarkup | None]:
     return "\n".join(lines), markup
 
 
+async def cookiestatus_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
+        return
+
+    if os.path.exists(_COOKIES_FILE):
+        stat = os.stat(_COOKIES_FILE)
+        size_kb = stat.st_size // 1024
+        import datetime
+        mtime = datetime.datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+        await update.message.reply_text(
+            f"✅ <b>cookies.txt topildi</b>\n"
+            f"Yo'l: <code>{_COOKIES_FILE}</code>\n"
+            f"Hajm: {size_kb} KB\n"
+            f"O'zgartirilgan: {mtime}",
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text(
+            f"❌ <b>cookies.txt topilmadi</b>\n\n"
+            f"Quyidagi yo'lga yuklang:\n<code>{_COOKIES_FILE}</code>\n\n"
+            f"Buyruq:\n<code>scp cookies.txt user@server:{_COOKIES_FILE}</code>",
+            parse_mode="HTML",
+        )
+
+
 async def users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("Bu buyruq faqat bot egasi uchun.")
@@ -152,6 +178,7 @@ def main() -> None:
 
     app.add_handler(CommandHandler(["start", "help"], start))
     app.add_handler(CommandHandler("users", users_cmd))
+    app.add_handler(CommandHandler("cookiestatus", cookiestatus_cmd))
     app.add_handler(CallbackQueryHandler(users_page_callback, pattern=r"^users:\d+$"))
     app.add_handler(MessageHandler(filters.CONTACT, contact_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, auto_download))
