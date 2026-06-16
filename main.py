@@ -143,7 +143,7 @@ async def users_page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer("Ruxsat yo'q.")
         return
     await query.answer()
-    page = int(query.data.split(":")[1])
+    page = max(1, int(query.data.split(":")[1]))
     text, markup = _build_users_page(page)
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=markup)
 

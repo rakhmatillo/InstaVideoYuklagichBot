@@ -13,7 +13,7 @@ from telegram.ext import ContextTypes
 
 from db import upsert_user
 
-_SUPPORTED_RE = re.compile(r"https?://(?:www\.)?instagram\.com/\S+")
+_SUPPORTED_RE = re.compile(r"https?://(?:www\.)?instagram\.com/[^\s\)\]'\"<>.,!?]+")
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +32,8 @@ def _get_cookies_path() -> str | None:
     with open(_COOKIES_FILE, "r", encoding="utf-8") as f:
         content = f.read().strip()
 
-    # Already Netscape format
-    if content.startswith("#") or "\t" in content[:200]:
+    # Already Netscape format (exact magic string check — avoids tab-indented JSON false positive)
+    if content.startswith("# Netscape HTTP Cookie File"):
         return _COOKIES_FILE
 
     # JSON format — convert to Netscape
@@ -53,10 +53,14 @@ def _get_cookies_path() -> str | None:
             value = c.get("value", "")
             lines.append(f"{domain}\t{subdomains}\t{path}\t{secure}\t{expiry}\t{name}\t{value}")
 
+        if len(lines) <= 1:
+            logger.error("cookies.txt parsed but contained 0 cookies — check JSON structure (expected list or {\"cookies\": [...]})")
+            return None
+
         with open(_NETSCAPE_COOKIES_FILE, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
-        logger.info("Converted JSON cookies to Netscape format -> %s", _NETSCAPE_COOKIES_FILE)
+        logger.info("Converted %d cookies to Netscape format -> %s", len(lines) - 1, _NETSCAPE_COOKIES_FILE)
         return _NETSCAPE_COOKIES_FILE
 
     except Exception as exc:
@@ -113,7 +117,7 @@ async def _fix_aspect_ratio(input_path: str) -> str:
     )
     _, stderr = await proc.communicate()
 
-    if proc.returncode == 0 and os.path.exists(output_path):
+    if proc.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 1024:
         logger.info("Aspect ratio fixed: %s", output_path)
         return output_path
 
@@ -208,15 +212,14 @@ async def auto_download(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not update.message or not update.effective_user:
         return
 
-    user = update.effective_user
-    upsert_user(
-        user_id=user.id,
-        username=user.username,
-        first_name=user.first_name,
-        last_name=user.last_name,
-    )
-
     text = update.message.text or ""
     match = _SUPPORTED_RE.search(text)
     if match:
+        user = update.effective_user
+        upsert_user(
+            user_id=user.id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name,
+        )
         await _do_download(match.group(), update)
