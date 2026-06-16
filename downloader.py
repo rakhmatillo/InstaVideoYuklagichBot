@@ -9,6 +9,8 @@ import yt_dlp
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from db import upsert_user
+
 _SUPPORTED_RE = re.compile(r"https?://(?:www\.)?instagram\.com/\S+")
 
 logger = logging.getLogger(__name__)
@@ -60,6 +62,7 @@ async def _do_download(url: str, update: Update) -> None:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             },
         }
+
         def _run_ydl():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -77,8 +80,8 @@ async def _do_download(url: str, update: Update) -> None:
             size = os.path.getsize(filepath)
             if size > _MAX_BYTES:
                 await status_msg.edit_text(
-                    f"Video juda katta ({size // (1024*1024)} MB). "
-                    "Telegram 50 MB dan katta fayllarni qabul qilmaydi."
+                    f"Video juda katta ({size // (1024 * 1024)} MB). "
+                    "80 MB dan katta fayllarni yuborib bo'lmaydi."
                 )
                 return
 
@@ -106,6 +109,17 @@ async def _do_download(url: str, update: Update) -> None:
 
 
 async def auto_download(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not update.effective_user:
+        return
+
+    user = update.effective_user
+    upsert_user(
+        user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
     text = update.message.text or ""
     match = _SUPPORTED_RE.search(text)
     if match:
