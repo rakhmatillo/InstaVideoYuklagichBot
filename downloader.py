@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 _MAX_BYTES = 80 * 1024 * 1024  # 80 MB upload limit
 _TMPDIR = os.path.join(os.path.dirname(__file__), "downloads")
+_COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
 
 _ROAST_MESSAGES = [
     "Bekorchimisiz? Ishlasez bo'lmaydimi? 😒",
@@ -62,6 +63,8 @@ async def _do_download(url: str, update: Update) -> None:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             },
         }
+        if os.path.exists(_COOKIES_FILE):
+            ydl_opts["cookiefile"] = _COOKIES_FILE
 
         def _run_ydl():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
