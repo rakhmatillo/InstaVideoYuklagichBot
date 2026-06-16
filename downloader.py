@@ -108,9 +108,9 @@ async def _fix_aspect_ratio(input_path: str) -> str:
 
     proc = await asyncio.create_subprocess_exec(
         ffmpeg, "-y", "-i", input_path,
-        "-vf", "setsar=1",          # fix sample aspect ratio to 1:1
-        "-c:a", "copy",             # copy audio stream unchanged
-        "-movflags", "+faststart",  # MP4 fast-start for streaming
+        "-vf", "scale=iw:ih,setsar=1",  # scale=iw:ih forces decode pipeline (bakes rotation); setsar=1 fixes pixel ratio
+        "-c:a", "copy",
+        "-movflags", "+faststart",
         output_path,
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
