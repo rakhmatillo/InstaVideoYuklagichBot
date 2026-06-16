@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import random
@@ -18,6 +19,49 @@ logger = logging.getLogger(__name__)
 _MAX_BYTES = 80 * 1024 * 1024  # 80 MB upload limit
 _TMPDIR = os.path.join(os.path.dirname(__file__), "downloads")
 _COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
+
+_NETSCAPE_COOKIES_FILE = _COOKIES_FILE + ".converted"
+
+
+def _get_cookies_path() -> str | None:
+    """Return a Netscape-format cookies path, converting from JSON if needed."""
+    if not os.path.exists(_COOKIES_FILE):
+        return None
+
+    with open(_COOKIES_FILE, "r", encoding="utf-8") as f:
+        content = f.read().strip()
+
+    # Already Netscape format
+    if content.startswith("#") or "\t" in content[:200]:
+        return _COOKIES_FILE
+
+    # JSON format — convert to Netscape
+    try:
+        data = json.loads(content)
+        if isinstance(data, dict):
+            data = data.get("cookies", [])
+
+        lines = ["# Netscape HTTP Cookie File"]
+        for c in data:
+            domain = c.get("domain", "")
+            subdomains = "TRUE" if domain.startswith(".") else "FALSE"
+            path = c.get("path", "/")
+            secure = "TRUE" if c.get("secure", False) else "FALSE"
+            expiry = int(c.get("expirationDate", c.get("expires", 0)) or 0)
+            name = c.get("name", "")
+            value = c.get("value", "")
+            lines.append(f"{domain}\t{subdomains}\t{path}\t{secure}\t{expiry}\t{name}\t{value}")
+
+        with open(_NETSCAPE_COOKIES_FILE, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+        logger.info("Converted JSON cookies to Netscape format -> %s", _NETSCAPE_COOKIES_FILE)
+        return _NETSCAPE_COOKIES_FILE
+
+    except Exception as exc:
+        logger.error("Failed to convert cookies: %s", exc)
+        return None
+
 
 _ROAST_MESSAGES = [
     "Bekorchimisiz? Ishlasez bo'lmaydimi? 😒",
@@ -63,10 +107,11 @@ async def _do_download(url: str, update: Update) -> None:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             },
         }
-        cookies_loaded = os.path.exists(_COOKIES_FILE)
+        cookies_path = _get_cookies_path()
+        cookies_loaded = cookies_path is not None
         if cookies_loaded:
-            ydl_opts["cookiefile"] = _COOKIES_FILE
-            logger.info("Using cookies file: %s", _COOKIES_FILE)
+            ydl_opts["cookiefile"] = cookies_path
+            logger.info("Using cookies: %s", cookies_path)
         else:
             logger.warning("cookies.txt not found at %s — trying without auth", _COOKIES_FILE)
 
