@@ -4,6 +4,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import tempfile
 
 import yt_dlp
@@ -91,6 +92,35 @@ _ROAST_MESSAGES = [
 ]
 
 
+async def _fix_aspect_ratio(input_path: str) -> str:
+    """Re-mux video with ffmpeg to fix SAR metadata — fixes square-frame bug on iOS/macOS."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        logger.warning("ffmpeg not found — skipping aspect ratio fix (video may appear square on iOS/macOS)")
+        return input_path
+
+    base, ext = os.path.splitext(input_path)
+    output_path = base + "_fixed" + (ext or ".mp4")
+
+    proc = await asyncio.create_subprocess_exec(
+        ffmpeg, "-y", "-i", input_path,
+        "-vf", "setsar=1",          # fix sample aspect ratio to 1:1
+        "-c:a", "copy",             # copy audio stream unchanged
+        "-movflags", "+faststart",  # MP4 fast-start for streaming
+        output_path,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+
+    if proc.returncode == 0 and os.path.exists(output_path):
+        logger.info("Aspect ratio fixed: %s", output_path)
+        return output_path
+
+    logger.warning("ffmpeg aspect ratio fix failed: %s", stderr.decode(errors="replace"))
+    return input_path
+
+
 async def _do_download(url: str, update: Update) -> None:
     roast = random.choice(_ROAST_MESSAGES)
     status_msg = await update.message.reply_text(f"{roast}\n\n⏬ Yuklanmoqda...")
@@ -128,6 +158,8 @@ async def _do_download(url: str, update: Update) -> None:
                 if not candidates:
                     raise FileNotFoundError("Video fayli topilmadi.")
                 filepath = os.path.join(tmpdir, candidates[0])
+
+            filepath = await _fix_aspect_ratio(filepath)
 
             size = os.path.getsize(filepath)
             if size > _MAX_BYTES:
